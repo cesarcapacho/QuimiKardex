@@ -1,0 +1,126 @@
+/* eslint-disable */
+/* postcss config file detected */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 210 40% 98%;
+    /* Light blue background for primary elements */
+    --primary-foreground: 220 90% 45%;
+    /* Vibrant blue text on primary */
+    --secondary: 220 14.3% 95.9%;
+    /* Lighter gray for secondary elements */
+    --secondary-foreground: 220.9 39.3% 11%;
+    /* Dark text on secondary */
+    --muted: 220 14.3% 95.9%;
+    /* Same as secondary, for muted elements */
+    --muted-foreground: 225.5 8.9% 43.2%;
+    /* Gray text for muted */
+    --accent: 180 70% 90%;
+    /* Light cyan accent */
+    --accent-foreground: 180 70% 30%;
+    /* Dark cyan text on accent */
+    --destructive: 0 84.2% 60.2%;
+    /* Red for destructive actions */
+    --destructive-foreground: 210 20% 98%;
+    /* Light text on destructive */
+    --border: 220 13% 91%;
+    /* Light gray border */
+    --input: 220 13% 91%;
+    /* Light gray input background */
+    --ring: 220 90% 45%;
+    /* Vibrant blue ring for focus */
+    --radius: 0.5rem;
+    /* Rounded corners */
+  }
+
+  .dark {
+    --background: 224 71.4% 4.1%;
+    /* Very dark blue */
+    --foreground: 210 20% 98%;
+    /* Almost white text */
+    --card: 224 71.4% 4.1%;
+    /* Dark card background */
+    --card-foreground: 210 20% 98%;
+    /* Light text on card */
+    --popover: 224 71.4% 4.1%;
+    /* Dark popover */
+    --popover-foreground: 210 20% 98%;
+    /* Light text on popover */
+    --primary: 220 90% 45%;
+    /* Vibrant blue primary */
+    --primary-foreground: 210 20% 98%;
+    /* Light text on primary */
+    --secondary: 215 27.9% 16.9%;
+    /* Darker gray secondary */
+    --secondary-foreground: 210 20% 98%;
+    /* Light text on secondary */
+    --muted: 215 27.9% 16.9%;
+    /* Same as secondary */
+    --muted-foreground: 217.9 10.6% 64.9%;
+    /* Lighter gray text for muted */
+    --accent: 180 70% 30%;
+    /* Dark cyan accent */
+    --accent-foreground: 210 20% 98%;
+    /* Light text on accent */
+    --destructive: 0 62.8% 30.6%;
+    /* Darker red for destructive */
+    --destructive-foreground: 210 20% 98%;
+    /* Light text on destructive */
+    --border: 215 27.9% 16.9%;
+    /* Darker border */
+    --input: 215 27.9% 16.9%;
+    /* Darker input background */
+    --ring: 220 90% 55%;
+    /* Slightly brighter blue ring */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-gradient-to-br from-white via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-slate-900 dark:to-gray-800 text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar for better aesthetics */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--secondary) / 0.5);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary-foreground) / 0.5);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary-foreground) / 0.7);
+}
+
+/* Subtle button hover effect */
+@layer components {
+  .btn-effect {
+    @apply transform transition-transform duration-150 ease-in-out hover:scale-[1.03] active:scale-[0.98];
+  }
+}
