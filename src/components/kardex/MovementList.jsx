@@ -1,23 +1,22 @@
-
+// src/components/kardex/MovementList.jsx
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpCircle, ArrowDownCircle, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+// import { cn } from '@/lib/utils'; // Si no se usa directamente, puedes comentarla o quitarla
+
+// Importaciones de date-fns (asegúrate de que estén instaladas: npm install date-fns)
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale'; // Si necesitas el formato en español
 
 const MovementList = ({ movements, onDelete, userRole }) => {
   const isProfessor = userRole === 'Profesor';
 
-  const formatDate = (dateString) => {
-    try {
-      // Adding 'T00:00:00' ensures the date is interpreted in the local timezone, not UTC
-      return new Date(dateString + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch (e) {
-      return dateString; // Fallback
-    }
-  };
+  // No necesitamos la función formatDate aquí si el date ya es un objeto Date
+  // que viene del hook useKardex.
+  // En su lugar, usaremos `format` de date-fns directamente en el renderizado.
 
   return (
     <div className="overflow-x-auto rounded-lg border dark:border-slate-700 shadow-md">
@@ -48,7 +47,8 @@ const MovementList = ({ movements, onDelete, userRole }) => {
                   transition={{ duration: 0.2 }}
                   className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors duration-150 text-sm"
                 >
-                  <TableCell>{formatDate(mov.date)}</TableCell>
+                  {/* Se asume que mov.date ya es un objeto Date gracias a useKardex */}
+                  <TableCell>{mov.date ? format(mov.date, 'dd/MM/yyyy', { locale: es }) : 'N/A'}</TableCell>
                   <TableCell className="font-medium">{mov.reagentName}</TableCell>
                   <TableCell>
                     {mov.type === 'entrada' ? (
@@ -78,7 +78,7 @@ const MovementList = ({ movements, onDelete, userRole }) => {
                           <AlertDialogHeader>
                             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Eliminará el registro de <span className="font-semibold">{mov.type === 'entrada' ? 'entrada' : 'salida'}</span> de <span className="font-semibold">{mov.quantity?.toFixed(2)} {mov.unit}</span> de <span className="font-semibold">{mov.reagentName}</span> del día {formatDate(mov.date)}. <span className="font-bold text-destructive dark:text-red-400">El stock se reajustará.</span>
+                              Esta acción no se puede deshacer. Eliminará el registro de <span className="font-semibold">{mov.type === 'entrada' ? 'entrada' : 'salida'}</span> de <span className="font-semibold">{mov.quantity?.toFixed(2)} {mov.unit}</span> de <span className="font-semibold">{mov.reagentName}</span> del día {mov.date ? format(mov.date, 'dd/MM/yyyy', { locale: es }) : 'N/A'}. <span className="font-bold text-destructive dark:text-red-400">El stock se reajustará.</span>
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -94,11 +94,17 @@ const MovementList = ({ movements, onDelete, userRole }) => {
                 </motion.tr>
               ))
             ) : (
-              <TableRow>
+              <motion.tr
+                key="no-movements-found" 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
                 <TableCell colSpan={isProfessor ? 9 : 8} className="h-24 text-center text-muted-foreground italic">
                   No se encontraron movimientos con los filtros actuales.
                 </TableCell>
-              </TableRow>
+              </motion.tr>
             )}
           </AnimatePresence>
         </TableBody>

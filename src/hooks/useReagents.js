@@ -1,154 +1,143 @@
+// hooks/useReagents.js (Versión CORREGIDA para la duplicación y manejo de ID)
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/components/ui/use-toast';
-
-const REAGENTS_STORAGE_KEY = 'labReagents';
-const initialReagentsData = [];
+import {
+  addReagent as addReagentToFirestore,
+  updateReagent as updateReagentInFirestore,
+  deleteReagent as deleteReagentFromFirestore
+} from '@/firebase/firestoreService';
+import {
+  collection,
+  query,
+  onSnapshot,
+  orderBy
+} from 'firebase/firestore';
+import { db } from '@/firebase/config';
 
 export function useReagents() {
   const [reagents, setReagents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { toast } = useToast();
 
+  // Esta función se encarga de escuchar los cambios en Firestore en tiempo real
+  // y actualizar el estado 'reagents' localmente.
+  // ¡Es la ÚNICA que debe modificar 'reagents' al cargar o por cambios en la DB!
+  const loadReagentsFromFirestore = useCallback(() => {
+    setLoading(true);
+    setError(null);
+
+    const q = query(collection(db, 'reagents'), orderBy('name', 'asc')); // Ordena por nombre para consistencia
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedReagents = querySnapshot.docs.map(doc => ({
+        id: doc.id, // El ID ahora viene DIRECTAMENTE de Firebase
+        ...doc.data()
+      }));
+      setReagents(fetchedReagents);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error al escuchar reactivos en Firestore:", err);
+      setError("No se pudieron cargar los reactivos en tiempo real.");
+      setLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Error de conexión",
+        description: "No se pudieron cargar los reactivos en tiempo real. Intenta recargar la página."
+      });
+    });
+
+    return unsubscribe; // Retorna la función para desuscribirse cuando el componente se desmonte
+  }, [toast]);
+
+  // useEffect para iniciar la suscripción a Firestore cuando el componente se monta
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(REAGENTS_STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : initialReagentsData;
-      setReagents(parsed);
-
-      if (!stored) {
-        localStorage.setItem(REAGENTS_STORAGE_KEY, JSON.stringify(initialReagentsData));
+    const unsubscribe = loadReagentsFromFirestore(); // Llamamos a la nueva función de carga
+    return () => {
+      if (unsubscribe && typeof unsubscribe === 'function') {
+        unsubscribe(); // Limpia la suscripción
       }
-    } catch (error) {
-      console.error("Error cargando reactivos:", error);
-      setReagents(initialReagentsData);
+    };
+  }, [loadReagentsFromFirestore]); // Asegúrate de que esta dependencia sea correcta
 
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudieron cargar los reactivos."
-        });
-      }, 0);
+  // Función para agregar un nuevo reactivo a Firestore
+  const addReagent = useCallback(async (newData) => {
+    setLoading(true);
+    try {
+      // Llama a la función de Firebase Service para añadir el reactivo.
+      // Firebase genera automáticamente el ID.
+      const firebaseId = await addReagentToFirestore(newData); // FirestoreService retorna solo el ID.
+
+      // Retornamos el objeto completo con el ID generado por Firebase.
+      // El estado 'reagents' se actualizará automáticamente vía onSnapshot.
+      toast({
+        title: "Éxito",
+        description: `Reactivo "${newData.name}" agregado correctamente.`,
+        variant: "success",
+      });
+      return { id: firebaseId, ...newData }; // ¡Devuelve el objeto con el ID de Firebase!
+    } catch (error) {
+      console.error("Error al agregar reactivo:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo agregar el reactivo."
+      });
+      return null;
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
-  const updateLocalStorage = useCallback((updated) => {
+  // Función para actualizar un reactivo existente en Firestore
+  const updateReagent = useCallback(async (reagentId, updatedData) => {
+    setLoading(true);
     try {
-      localStorage.setItem(REAGENTS_STORAGE_KEY, JSON.stringify(updated));
-    } catch (error) {
-      console.error("Error guardando reactivos:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo guardar el inventario."
-        });
-      }, 0);
-    }
-  }, [toast]);
-
-  const addReagent = useCallback(async (newData) => {
-    const newReagent = {
-  ...newData,
-  id: newData.id || `r${Date.now()}`,
-  quantity: parseFloat(newData.quantity) || 0, //  Guarda lo que se ingreso en el formulario
-  // Puedes mantener otros campos como unit, name, etc.
-};
-
-
-    try {
-      const updated = [...reagents, newReagent];
-      setReagents(updated);
-      updateLocalStorage(updated);
-
-      setTimeout(() => {
-        toast({
-          title: "Éxito",
-          description: `Reactivo "${newReagent.name}" agregado correctamente.`,
-          variant: "success",
-        });
-      }, 0);
-
-      return true;
-    } catch (error) {
-      console.error("Error al agregar reactivo:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo agregar el reactivo."
-        });
-      }, 0);
-      return false;
-    }
-  }, [reagents, updateLocalStorage, toast]);
-
-  const updateReagent = useCallback(async (updatedData) => {
-    try {
-      const updated = reagents.map(r =>
-        r.id === updatedData.id
-          ? {
-            ...r,
-            ...updatedData,
-            quantity: parseFloat(updatedData.quantity) || 0
-          }
-          : r
-      );
-      setReagents(updated);
-      updateLocalStorage(updated);
-
-      setTimeout(() => {
-        toast({
-          title: "Éxito",
-          description: `Reactivo "${updatedData.name}" actualizado correctamente.`,
-          variant: "success",
-        });
-      }, 0);
-
+      await updateReagentInFirestore(reagentId, updatedData);
+      // El estado 'reagents' se actualizará automáticamente vía onSnapshot.
+      toast({
+        title: "Éxito",
+        description: `Reactivo "${updatedData.name}" actualizado correctamente.`,
+        variant: "success",
+      });
       return true;
     } catch (error) {
       console.error("Error al actualizar reactivo:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo actualizar el reactivo."
-        });
-      }, 0);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo actualizar el reactivo."
+      });
       return false;
+    } finally {
+      setLoading(false);
     }
-  }, [reagents, updateLocalStorage, toast]);
+  }, [toast]);
 
+  // Función para eliminar un reactivo de Firestore
   const deleteReagent = useCallback(async (idToDelete) => {
+    setLoading(true);
     try {
-      const reagentToDelete = reagents.find(r => r.id === idToDelete);
-      const updated = reagents.filter(r => r.id !== idToDelete);
-      setReagents(updated);
-      updateLocalStorage(updated);
-
-      setTimeout(() => {
-        toast({
-          title: "Éxito",
-          description: `Reactivo "${reagentToDelete?.name}" eliminado correctamente.`,
-          variant: "success",
-        });
-      }, 0);
-
+      await deleteReagentFromFirestore(idToDelete);
+      // El estado 'reagents' se actualizará automáticamente vía onSnapshot.
+      toast({
+        title: "Éxito",
+        description: "Reactivo eliminado correctamente.",
+        variant: "success",
+      });
       return true;
     } catch (error) {
       console.error("Error al eliminar reactivo:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo eliminar el reactivo."
-        });
-      }, 0);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo eliminar el reactivo."
+      });
       return false;
+    } finally {
+      setLoading(false);
     }
-  }, [reagents, updateLocalStorage, toast]);
+  }, [toast]);
 
   return {
     reagents,
@@ -156,6 +145,6 @@ export function useReagents() {
     updateReagent,
     deleteReagent,
     loading,
-    setReagents
+    error
   };
 }

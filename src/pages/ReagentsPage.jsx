@@ -1,24 +1,27 @@
+// src/pages/ReagentsPage.jsx
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsContent } from '@/components/ui/tabs'; // Import Tabs root component
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { useReagents } from '@/hooks/useReagents';
 import ReagentList from '@/components/reagents/ReagentList';
-import ReagentForm from '@/components/reagents/ReagentForm';
-import ReagentDetailsDialog from '@/components/reagents/ReagentDetailsDialog';
+import { ReagentForm } from '@/components/reagents/ReagentForm';import ReagentDetailsDialog from '@/components/reagents/ReagentDetailsDialog';
 import { useKardex } from '@/hooks/useKardex';
 import ReagentFilters from '@/components/reagents/ReagentFilters';
-import ReagentTabsList from '@/components/reagents/ReagentTabs'; // Renamed component import for clarity
+import ReagentTabsList from '@/components/reagents/ReagentTabs';
 import { motion } from 'framer-motion';
 import { PlusCircle, Loader2, FlaskConical } from 'lucide-react';
 
 const ReagentsPage = () => {
   const { user } = useAuth();
+  // Asegúrate de que useReagents importa y usa addReagent, updateReagent de firestoreService.js
   const { reagents, addReagent, updateReagent, deleteReagent, loading } = useReagents();
+  // Asegúrate de que useKardex importa y usa addMovement de firestoreService.js
   const { addMovement, stockLevels } = useKardex();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -26,8 +29,12 @@ const ReagentsPage = () => {
   const [editingReagent, setEditingReagent] = useState(null);
   const [detailsReagent, setDetailsReagent] = useState(null);
 
-  const [newReagentPending, setNewReagentPending] = useState(null);
+  // Ya no necesitamos newReagentPending si addReagent devuelve el ID de inmediato
+  // const [newReagentPending, setNewReagentPending] = useState(null);
 
+  // El useEffect de sincronización también se simplifica o se elimina
+  // Si addReagent ahora retorna el ID de Firebase, podemos hacer la acción de Kardex de inmediato
+  /*
   useEffect(() => {
     if (!newReagentPending) return;
 
@@ -45,10 +52,10 @@ const ReagentsPage = () => {
           description: 'Ingreso automático desde Inventario'
         });
       }
-
       setNewReagentPending(null); // Limpiamos después de ejecutar
     }
-  }, [reagents, newReagentPending]);
+  }, [reagents, newReagentPending, addMovement, user?.name]); // Agregamos dependencias
+  */
 
   const isProfessor = user?.role === 'Profesor';
 
@@ -65,8 +72,6 @@ const ReagentsPage = () => {
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [reagents, activeTab, searchTerm]);
 
-
-
   const handleAddClick = () => {
     setEditingReagent(null);
     setIsFormOpen(true);
@@ -82,24 +87,58 @@ const ReagentsPage = () => {
     setIsDetailsOpen(true);
   };
 
-  const handleFormSubmit = (formData) => {
+  // ************************************************************
+  // *** C A M B I O   C R Í T I C O   A Q U Í : handleFormSubmit ***
+  // ************************************************************
+  const handleFormSubmit = async (formData) => {
     const isEditing = Boolean(editingReagent);
-    const newId = isEditing ? editingReagent.id : `r${Date.now()}`;
-    const fullReagent = { ...formData, id: newId };
+    setIsFormOpen(false); // Cierra el formulario inmediatamente
 
-    if (isEditing) {
-      updateReagent(fullReagent);
-    } else {
-      addReagent(fullReagent);
-      setNewReagentPending(fullReagent); // ⚠️ Aquí activamos el efecto
+    try {
+      if (isEditing) {
+        // Para editar, solo se necesita el ID del reactivo existente
+        const updatedReagentData = { ...formData, id: editingReagent.id };
+        await updateReagent(updatedReagentData); // Asume que updateReagent toma un objeto con ID
+        console.log("Reactivo actualizado en Firestore y estado local:", updatedReagentData);
+      } else {
+        // Para añadir, dejamos que Firebase genere el ID
+        // addReagent ahora DEBE retornar el objeto del reactivo con su ID de Firebase
+        const newReagentWithFirebaseId = await addReagent(formData);
+        console.log("Nuevo reactivo añadido con ID de Firebase:", newReagentWithFirebaseId.id);
+
+        // Si se añadió con éxito y tiene cantidad > 0, registra movimiento
+        const cantidad = parseFloat(newReagentWithFirebaseId.quantity);
+        if (cantidad > 0) {
+          await addMovement({
+            date: new Date().toISOString().split('T')[0],
+            reagentId: newReagentWithFirebaseId.id, // Usamos el ID de Firebase recién generado
+            type: 'entrada',
+            quantity: cantidad,
+            responsable: user?.displayName || user?.email || 'Sistema',
+            clase: 'Registro inicial',
+            description: `Ingreso automático al registrar: ${newReagentWithFirebaseId.name}`
+          });
+          console.log("Movimiento de entrada registrado para:", newReagentWithFirebaseId.name);
+        }
+      }
+      setEditingReagent(null); // Limpiar editingReagent después de guardar
+    } catch (error) {
+      console.error("Error al guardar o actualizar reactivo:", error);
+      alert(`Hubo un error al guardar el reactivo: ${error.message}`);
     }
-
-    setIsFormOpen(false);
-    setEditingReagent(null);
   };
+  // ************************************************************
 
-  const handleDelete = (id) => {
-    deleteReagent(id);
+  const handleDelete = async (id, name) => {
+    if (window.confirm(`¿Estás seguro de que quieres eliminar el reactivo "${name}"? Esta acción es irreversible y también eliminará todos sus movimientos de Kardex asociados.`)) {
+      try {
+        await deleteReagent(id); // Asume que deleteReagent maneja también los movimientos de Kardex asociados
+        console.log(`Reactivo ${name} (${id}) eliminado.`);
+      } catch (error) {
+        console.error("Error al eliminar reactivo:", error);
+        alert(`Hubo un error al eliminar el reactivo: ${error.message}`);
+      }
+    }
   };
 
   const handleFormClose = () => {
@@ -151,11 +190,9 @@ const ReagentsPage = () => {
         <CardContent className="p-4 md:p-6">
           <ReagentFilters searchTerm={searchTerm} onSearchTermChange={setSearchTerm} />
 
-          {/* Wrap TabsList and TabsContent in Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <ReagentTabsList types={reagentTypes} />
 
-            {/* Content for the active tab - Now correctly nested */}
             <TabsContent value={activeTab} className="mt-0 outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
               {loading ? (
                 <div className="flex justify-center items-center h-40">
@@ -165,7 +202,7 @@ const ReagentsPage = () => {
               ) : (
                 <ReagentList
                   reagents={filteredReagents}
-                  stockLevels={stockLevels} // ✅ este es el cambio clave
+                  stockLevels={stockLevels}
                   onDetails={handleDetailsClick}
                   onEdit={isProfessor ? handleEditClick : undefined}
                   onDelete={isProfessor ? handleDelete : undefined}
@@ -173,17 +210,15 @@ const ReagentsPage = () => {
                 />
               )}
             </TabsContent>
-            {/* You can add more TabsContent blocks here if needed for other tabs, matching their 'value' */}
           </Tabs>
         </CardContent>
       </Card>
 
-      {/* Details Modal */}
       <ReagentDetailsDialog
         reagent={detailsReagent}
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
-        stockLevels={stockLevels} // ✅ aquí se lo pasamos
+        stockLevels={stockLevels}
       />
     </motion.div>
   );

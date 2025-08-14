@@ -40,7 +40,6 @@ import { motion } from 'framer-motion';
 // ✅ Hooks y lógica
 import { useAuth } from '@/context/AuthContext';
 import { useKardex } from '@/hooks/useKardex';
-import { useRegistrarReactivoConEntrada } from '@/hooks/kardex/useRegistrarReactivoConEntrada';
 import { useReagents } from '@/hooks/useReagents';
 
 // ✅ Componentes del Kardex
@@ -49,8 +48,7 @@ import MovementList from '@/components/kardex/MovementList';
 import MovementForm from '@/components/kardex/MovementForm';
 
 // ✅ Componente para el formulario de reactivos
-import ReagentForm from '@/components/reagents/ReagentForm';
-
+import { ReagentForm } from '@/components/reagents/ReagentForm';
 const KardexPage = () => {
   const { user } = useAuth();
   const isProfessor = user?.role === 'Profesor';
@@ -70,12 +68,6 @@ const KardexPage = () => {
     loading: reagentsLoading
   } = useReagents();
 
-  const { registrarReactivo } = useRegistrarReactivoConEntrada({
-    addReagent,
-    addMovement,
-    reagents,
-    user
-  });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterReagent, setFilterReagent] = useState('all');

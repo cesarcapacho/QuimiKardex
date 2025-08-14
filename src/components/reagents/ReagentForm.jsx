@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,9 +5,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DialogClose, DialogFooter } from '@/components/ui/dialog';
-import { fdsTitulos } from '@/constants/fdsTitulos';
-import { Checkbox } from '@/components/ui/checkbox'; // Needs creation
-import { Flame, FlaskConical as TypeIcon, TestTube, Droplet, Biohazard, Skull, Bot, HelpCircle, ShieldAlert, Atom } from 'lucide-react'; // Example icons
+import { fdsTitulos } from '@/constants/fdsTitulos'; // Asegúrate que esta ruta y archivo existen
+import { Checkbox } from '@/components/ui/checkbox';
+import { Flame, FlaskConical as TypeIcon, TestTube, Droplet, Biohazard, Skull, Bot, HelpCircle, ShieldAlert, Atom } from 'lucide-react';
+
+// Importa las funciones de Firestore
+import { addReagent, updateReagent } from '@/firebase/firestoreService'; // Asegúrate que esta ruta sea correcta
 
 const pictogramOptions = [
   { id: 'flammable', label: 'Inflamable', icon: <Flame className="h-4 w-4 text-red-600" /> },
@@ -52,8 +54,10 @@ const classificationToPictograms = {
   'No Peligroso': [],
 };
 
-
-const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
+// ************************************************************
+// *** C A M B I O   A Q U Í : Exportación nombrada directa ***
+// ************************************************************
+export function ReagentForm({ onSubmit, initialData, availableTypes, onCancel }) {
   const defaultFormData = {
     id: null,
     name: '',
@@ -71,6 +75,7 @@ const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
 
   const [formData, setFormData] = useState(initialData || defaultFormData);
   const [selectedPictograms, setSelectedPictograms] = useState(new Set(formData.pictograms));
+  const [loading, setLoading] = useState(false); // Estado para manejar el loading
 
   useEffect(() => {
     setFormData(initialData || defaultFormData);
@@ -113,10 +118,27 @@ const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
     setFormData({ ...formData, safetyPoints: updatedPoints });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSubmit({ ...formData, pictograms: Array.from(selectedPictograms) });
-    // No reset needed here, parent component handles dialog closing/state
+    setLoading(true); // Activa el estado de loading
+
+    try {
+      const dataToSave = { ...formData, pictograms: Array.from(selectedPictograms) };
+      if (dataToSave.id) {
+        // Si hay un ID, actualiza el reactivo existente
+        await updateReagent(dataToSave.id, dataToSave);
+      } else {
+        // Si no hay ID, añade un nuevo reactivo
+        const newId = await addReagent(dataToSave);
+        dataToSave.id = newId; // Asigna el ID generado para pasarlo al onSubmit
+      }
+      onSubmit(dataToSave); // Llama a la función onSubmit del componente padre
+    } catch (error) {
+      console.error("Error al guardar el reactivo:", error);
+      alert("Hubo un error al guardar el reactivo. Por favor, inténtalo de nuevo.");
+    } finally {
+      setLoading(false); // Desactiva el estado de loading
+    }
   };
 
   return (
@@ -283,12 +305,11 @@ const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
           />
         </div>
 
-        {/* Ficha de Seguridad */}
-        <div className="mt-8 space-y-6">
+        {/* Ficha de Seguridad (descomentado si es necesario) */}
+        {/* <div className="mt-8 space-y-6">
           <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-100">
             Ficha de Datos de Seguridad (FDS)
           </h3>
-
           {fdsTitulos.map((titulo, index) => (
             <div key={index}>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -302,10 +323,11 @@ const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
               />
             </div>
           ))}
-        </div> {/* ✅ Cierre correcto del bloque FDS */}
+        </div> */}
 
-
-
+        {/* Campos para subir archivos (actualmente no implementados con Firebase Storage) */}
+        {/* <input type="file" accept=".pdf" />
+        <input type="file" accept=".pdf" /> */}
 
 
         {/* Botones */}
@@ -315,14 +337,12 @@ const ReagentForm = ({ onSubmit, initialData, availableTypes, onCancel }) => {
               Cancelar
             </Button>
           </DialogClose>
-          <Button type="submit" className="btn-effect">
-            {formData.id ? 'Actualizar' : 'Guardar'} Reactivo
+          <Button type="submit" className="btn-effect" disabled={loading}>
+            {loading ? 'Guardando...' : (formData.id ? 'Actualizar' : 'Guardar')} Reactivo
           </Button>
         </DialogFooter>
 
-</div>
+      </div>
     </form>
   );
 }
-
-export default ReagentForm;

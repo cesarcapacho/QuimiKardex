@@ -1,32 +1,59 @@
+// src/hooks/useKardex.js (Versión CORREGIDA para Firestore y sincronización con Reagents)
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/ui/use-toast';
 import { useReagents } from '@/hooks/useReagents';
 
-const KARDEX_STORAGE_KEY = 'labKardexMovements';
+// ************************************************************
+// *** C A M B I O S   A Q U Í : Importaciones directas de firestoreService.js ***
+// ************************************************************
+import {
+  addMovement, // Importa directamente 'addMovement'
+  deleteMovement // Importa directamente 'deleteMovement'
+} from '@/firebase/firestoreService';
+// ************************************************************
+
+import {
+  collection,
+  query,
+  onSnapshot,
+  orderBy
+} from 'firebase/firestore';
+import { db } from '@/firebase/config';
+
+const KARDEX_COLLECTION_NAME = 'kardexMovements';
 
 export function useKardex() {
-  const { reagents, loading: reagentsLoading } = useReagents();
+  const { reagents, loading: reagentsLoading, error: reagentsError } = useReagents();
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { toast } = useToast();
 
-  // 🧮 Calcular stock basado en movimientos + inventario base
+  // 🧮 Calcular stock basado en movimientos + inventario base (Reactivos)
   const stockLevels = useMemo(() => {
     const stock = {};
 
+    // Primero, inicializamos el stock con la cantidad base de cada reactivo
     reagents.forEach(r => {
-      const baseQty = parseFloat(r.quantity) || 0;
-      stock[r.id] = { name: r.name, unit: r.unit, current: 0 };
+      const baseQty = parseFloat(r.quantity) || 0; // Usamos r.quantity como la base
+      stock[r.id] = { name: r.name, unit: r.unit, current: baseQty };
     });
 
+    // Luego, aplicamos los movimientos del Kardex
     movements.forEach(m => {
       const qty = parseFloat(m.quantity) || 0;
-      if (!stock[m.reagentId]) return;
+      if (!stock[m.reagentId]) {
+        // Esto puede ocurrir si un movimiento existe para un reactivo que ya no está,
+        // o si los movimientos cargan antes que los reactivos.
+        console.warn(`Movimiento encontrado para reactivo desconocido: ${m.reagentId}`);
+        return;
+      }
 
       if (m.type === 'entrada') stock[m.reagentId].current += qty;
       if (m.type === 'salida') stock[m.reagentId].current -= qty;
     });
 
+    // Asegura que las cantidades no sean negativas
     Object.values(stock).forEach(s => {
       s.current = Math.max(0, s.current);
     });
@@ -34,66 +61,68 @@ export function useKardex() {
     return stock;
   }, [movements, reagents]);
 
-  // 📦 Cargar movimientos desde localStorage al iniciar
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(KARDEX_STORAGE_KEY);
-      if (stored) {
-        setMovements(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error("Error cargando Kardex:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo cargar el Kardex."
-        });
-      }, 0);
-      setMovements([]);
-    } finally {
+
+  // 📦 Cargar movimientos desde Firestore en tiempo real
+  const loadKardexMovementsFromFirestore = useCallback(() => {
+    setLoading(true);
+    setError(null);
+
+    // Ordenar por 'createdAt' que agregamos al guardar los movimientos
+    const q = query(collection(db, KARDEX_COLLECTION_NAME), orderBy('createdAt', 'desc')); 
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedMovements = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        // Convertir Timestamp a Date si es necesario para mostrar o manipular
+        // Asegúrate que 'date' sea un objeto Date
+        date: doc.data().date instanceof Date ? doc.data().date : new Date(doc.data().date),
+        // Firestore Timestamp a Date (usa optional chaining por si el campo no existe)
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt), 
+      }));
+      setMovements(fetchedMovements);
       setLoading(false);
-    }
+    }, (err) => {
+      console.error("Error al escuchar movimientos de Kardex en Firestore:", err);
+      setError("No se pudieron cargar los movimientos del Kardex en tiempo real.");
+      setLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Error de conexión",
+        description: "No se pudieron cargar los movimientos del Kardex en tiempo real. Intenta recargar la página."
+      });
+    });
+
+    return unsubscribe;
   }, [toast]);
 
-  // 💾 Guardar Kardex en localStorage
-  const updateLocalStorage = useCallback((updated) => {
-    try {
-      localStorage.setItem(KARDEX_STORAGE_KEY, JSON.stringify(updated));
-    } catch (error) {
-      console.error("Error guardando Kardex:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo guardar el Kardex."
-        });
-      }, 0);
-    }
-  }, [toast]);
-
-  // ➕ Agregar nuevo movimiento
-  const addMovement = useCallback(async (data) => {
-    const reagent =
-      reagents.find(r => r.id === data.reagentId) ||
-      (() => {
-        try {
-          const localData = localStorage.getItem('labReagents');
-          const parsed = JSON.parse(localData || '[]');
-          return parsed.find(r => r.id === data.reagentId);
-        } catch {
-          return null;
+  useEffect(() => {
+    // Solo iniciamos la carga de movimientos si los reactivos ya están cargados (o si no hay error en ellos)
+    // Esto previene que se calculen stockLevels con una lista de reactivos vacía temporalmente.
+    if (!reagentsLoading && !reagentsError) {
+      const unsubscribe = loadKardexMovementsFromFirestore();
+      return () => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
         }
-      })();
+      };
+    }
+  }, [reagentsLoading, reagentsError, loadKardexMovementsFromFirestore]);
+
+
+  // ➕ Agregar nuevo movimiento a Firestore
+  // ************************************************************
+  // *** C A M B I O   A Q U Í : Ahora 'addMovement' usa la función importada directamente ***
+  // ************************************************************
+  const addMovement = useCallback(async (data) => {
+    const reagent = reagents.find(r => r.id === data.reagentId);
 
     if (!reagent) {
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Reactivo no encontrado."
-        });
-      }, 0);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Reactivo no encontrado para registrar el movimiento. Recarga la página."
+      });
       return false;
     }
 
@@ -101,82 +130,74 @@ export function useKardex() {
     const current = stockLevels[data.reagentId]?.current || 0;
 
     if (data.type === 'salida' && qty > current) {
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Stock insuficiente",
-          description: `No hay suficiente ${reagent.name}. Stock actual: ${current.toFixed(2)} ${reagent.unit}.`
-        });
-      }, 0);
+      toast({
+        variant: "destructive",
+        title: "Stock insuficiente",
+        description: `No hay suficiente ${reagent.name}. Stock actual: ${current.toFixed(2)} ${reagent.unit}.`
+      });
       return false;
     }
 
     try {
-      const newMovement = {
+      const movementToSave = {
         ...data,
-        id: data.id || `k${Date.now()}`,
+        quantity: qty,
         reagentName: reagent.name,
         unit: reagent.unit,
-        quantity: qty,
+        createdAt: new Date(),
       };
-
-      setMovements(prev => {
-        const updated = [...prev, newMovement];
-        updateLocalStorage(updated);
-
-        setTimeout(() => {
-          toast({
-            title: "Éxito",
-            description: `Movimiento de ${reagent.name} registrado.`,
-            variant: "success",
-          });
-        }, 0);
-
-        return updated;
+      
+      const addedMovement = await addMovement(movementToSave); // <--- Llama a la función importada 'addMovement'
+      
+      toast({
+        title: "Éxito",
+        description: `Movimiento de ${reagent.name} registrado.`,
+        variant: "success",
       });
-
-      return true;
+      return addedMovement;
     } catch (error) {
-      console.error("Error en addMovement:", error);
-      setTimeout(() => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo registrar el movimiento."
-        });
-      }, 0);
+      console.error("Error en addMovement (Firestore):", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo registrar el movimiento."
+      });
       return false;
     }
-  }, [reagents, stockLevels, toast, updateLocalStorage]);
+  }, [reagents, stockLevels, toast]); // Agregué 'reagents' aquí para asegurar que 'reagent' esté actualizado
 
-  // 🗑️ Eliminar movimiento
-  const deleteMovement = useCallback((idToDelete) => {
-    const movement = movements.find(m => m.id === idToDelete);
-    if (!movement) return;
+  // 🗑️ Eliminar movimiento de Firestore
+  // ************************************************************
+  // *** C A M B I O   A Q U Í : Ahora 'deleteMovement' usa la función importada directamente ***
+  // ************************************************************
+  const deleteMovement = useCallback(async (idToDelete) => {
+    try {
+      await deleteMovement(idToDelete); // <--- Llama a la función importada 'deleteMovement'
+      
+      toast({
+        title: "Éxito",
+        description: `Movimiento eliminado.`,
+        variant: "success",
+      });
+      return true;
+    } catch (error) {
+      console.error("Error al eliminar movimiento (Firestore):", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo eliminar el movimiento."
+      });
+      return false;
+    }
+  }, [toast]);
 
-    setMovements(prev => {
-      const updated = prev.filter(m => m.id !== idToDelete);
-      updateLocalStorage(updated);
-
-      setTimeout(() => {
-        toast({
-          title: "Éxito",
-          description: `Movimiento eliminado.`,
-          variant: "success",
-        });
-      }, 0);
-
-      return updated;
-    });
-  }, [movements, toast, updateLocalStorage]);
-
-  // 🧪 Retornar hook completo
   return {
     movements,
     stockLevels,
     addMovement,
     deleteMovement,
     loading: loading || reagentsLoading,
-    reagentList: reagents
+    error: error || reagentsError,
+    reagentList: reagents // Mantener si otros componentes lo usan
   };
 }
