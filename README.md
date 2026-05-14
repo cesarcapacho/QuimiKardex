@@ -44,9 +44,9 @@ Cada cambio en la rama `main` activa un proceso de **build** y actualización co
 
 ## 📌 Funcionalidades Clave
 
-- 📋 Registro y edición de reactivos con pictogramas personalizados.
+- 📋 Registro y edición de reactivos con pictogramas.
 - 🔄 Movimientos tipo Kardex por fecha y cantidad.
-- 📊 Resumen dinámico del inventario con filtros avanzados.
+- 📊 Resumen dinámico del inventario con filtros.
 - 🔐 Arquitectura preparada para autenticación de usuarios.
 
 ---
@@ -65,10 +65,9 @@ Cada cambio en la rama `main` activa un proceso de **build** y actualización co
 **Cesar Capacho**  
 Est. Tecnologo Analisis y Desarrollo de Software — SENA 3065370
 🔗 GitHub: [@cesarcapacho](https://github.com/cesarcapacho)
+**Esteban Velandia**  
+Est. Tecnologo Analisis y Desarrollo de Software — SENA 3065370
+**Michael Rey**  
+Est. Tecnologo Analisis y Desarrollo de Software — SENA 3065370
 
----
 
-## 📄 Licencia
-
-Este proyecto está bajo la licencia **MIT**.  
-Consulta el archivo [`LICENSE`](./LICENSE) para más detalles.
